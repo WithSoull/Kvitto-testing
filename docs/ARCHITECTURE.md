@@ -146,7 +146,7 @@ POST /webhooks/bank
  1. verify_signature (dependency, по сырым байтам тела) → 401        [бонус 1]
  2. Pydantic валидирует body → 422
  3. SELECT ... FROM payments WHERE id = :id FOR UPDATE → нет → 404
- 4. ensure_transition_allowed(current, new) → InvalidTransition → 409
+ 4. ensure_transition_allowed(current, new) → InvalidTransitionError → 409
  5. UPDATE status, updated_at; COMMIT → 200 {"result": "ok"}
 ```
 `FOR UPDATE` сериализует параллельные вебхуки по одному платежу: второй ждёт коммита первого и
@@ -157,11 +157,11 @@ POST /webhooks/bank
 
 | Исключение | HTTP | Тело |
 |---|---|---|
-| `PaymentNotFound` | 404 | `{"detail": "Payment not found"}` |
-| `InvalidTransition` | 409 | `{"error": "invalid_transition"}` |
-| `UnknownTariff` | 422 | формат FastAPI, `loc: ["body","tariff_id"]` |
-| `UnknownPromoCode` | 422 | формат FastAPI, `loc: ["body","promo_code"]` |
-| `IdempotencyKeyReused` | 422 | формат FastAPI, `loc: ["header","Idempotency-Key"]` |
+| `PaymentNotFoundError` | 404 | `{"detail": "Payment not found"}` |
+| `InvalidTransitionError` | 409 | `{"error": "invalid_transition"}` |
+| `UnknownTariffError` | 422 | формат FastAPI, `loc: ["body","tariff_id"]` |
+| `UnknownPromoCodeError` | 422 | формат FastAPI, `loc: ["body","promo_code"]` |
+| `IdempotencyKeyReusedError` | 422 | формат FastAPI, `loc: ["header","Idempotency-Key"]` |
 | неверная подпись | 401 | `{"detail": "Invalid signature"}` (`HTTPException` в dependency) |
 
 ## 7. Транзакции и сессии (async)
