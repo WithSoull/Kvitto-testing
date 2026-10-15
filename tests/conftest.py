@@ -21,12 +21,17 @@ from app.main import app  # noqa: E402
 ALEMBIC_INI = Path(__file__).resolve().parents[1] / "alembic.ini"
 
 
-@pytest.fixture(scope="session", autouse=True)
-def _migrated_database() -> None:
-    # Sync on purpose: Alembic's env.py runs its own event loop via asyncio.run().
+@pytest.fixture(scope="session")
+def alembic_config() -> Config:
     config = Config(str(ALEMBIC_INI))
     config.set_main_option("sqlalchemy.url", TEST_DATABASE_URL)
-    command.upgrade(config, "head")
+    return config
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _migrated_database(alembic_config: Config) -> None:
+    # Sync on purpose: Alembic's env.py runs its own event loop via asyncio.run().
+    command.upgrade(alembic_config, "head")
 
 
 @pytest.fixture(scope="session")

@@ -106,7 +106,7 @@ kvitto/
 | `promo_code` | `VARCHAR(32)` | NULL, нормализованный (верхний регистр) |
 | `schedule` | `BIGINT[]` | NULL |
 | `idempotency_key` | `VARCHAR(255)` | NULL, `UNIQUE` |
-| `request_hash` | `CHAR(64)` | NULL, sha256 канонического запроса |
+| `request_hash` | `VARCHAR(64)` | NULL, sha256 канонического запроса |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
