@@ -178,8 +178,9 @@ POST /webhooks/bank
 - Клиент: `httpx.AsyncClient(transport=ASGITransport(app=app), base_url="http://test")`.
 - `pytest-asyncio`: `asyncio_mode = "auto"`, единый event loop на сессию для фикстур и тестов
   (иначе asyncpg-соединение «живёт» в другом loop'е → ошибки).
-- Тест на гонку идемпотентности (параллельные запросы) не помещается в схему с откатом — если
-  делаем, то отдельным тестом на реальных коммитах с очисткой таблицы.
+- Тесты на гонку идемпотентности не помещаются в схему с откатом: им нужны отдельные соединения.
+  Они лежат в `tests/services/test_payments_concurrency.py`, коммитят по-настоящему и удаляют
+  свои строки по ключу.
 
 ## 9. Окружение и запуск
 - `docker compose up` — `db` (postgres:16-alpine, healthcheck) + `app` (`alembic upgrade head && uvicorn`), порт 8000.
