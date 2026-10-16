@@ -9,7 +9,8 @@ from app.domain.promo import normalize_promo_code
 
 
 class PaymentCreate(BaseModel):
-    model_config = ConfigDict(str_strip_whitespace=True)
+    # extra="forbid": a misspelled field (e.g. "promocode") is a 422, not a silently full price.
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
 
     tariff_id: str = Field(min_length=1, max_length=32, examples=["standard"])
     email: EmailStr = Field(examples=["user@example.com"])

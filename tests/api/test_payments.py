@@ -176,6 +176,20 @@ async def test_create_payment_validation_errors(
     assert await count_payments(db_session) == 0
 
 
+@pytest.mark.parametrize("field", ["promocode", "promo", "installmentMonths", "amount"])
+async def test_create_payment_rejects_unknown_fields(
+    client: AsyncClient, db_session: AsyncSession, field: str
+) -> None:
+    # A typo like "promocode" must fail loudly instead of charging the full price.
+    response = await client.post("/payments", json=payment_body(**{field: "KVITTO10"}))
+
+    assert response.status_code == 422
+    error = response.json()["detail"][0]
+    assert error["type"] == "extra_forbidden"
+    assert error["loc"] == ["body", field]
+    assert await count_payments(db_session) == 0
+
+
 # --- Idempotency (spec scenario 3) ---
 
 

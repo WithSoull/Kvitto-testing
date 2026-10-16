@@ -119,6 +119,18 @@ async def test_webhook_validation_errors(client: AsyncClient, body: dict[str, An
     assert response.status_code == 422
 
 
+async def test_webhook_tolerates_unknown_fields(
+    client: AsyncClient, db_session: AsyncSession, payment_id: str
+) -> None:
+    # The bank may add fields to its notifications; that must not break status updates.
+    body = {"payment_id": payment_id, "status": "succeeded", "event_id": "evt_1", "amount": 1}
+
+    response = await post_webhook(client, body)
+
+    assert response.status_code == 200
+    assert await stored_status(db_session, payment_id) == PaymentStatus.SUCCEEDED
+
+
 # --- Signature (bonus): X-Signature = hex HMAC-SHA256 of the raw body with WEBHOOK_SECRET ---
 
 
