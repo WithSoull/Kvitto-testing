@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Payment
 from app.domain.enums import PaymentStatus
-from tests.helpers import post_webhook, sign
+from tests.helpers import assert_validation_error, post_webhook, sign
 
 
 @pytest.fixture
@@ -105,18 +105,24 @@ async def test_webhook_for_missing_payment_returns_404(client: AsyncClient) -> N
 
 
 @pytest.mark.parametrize(
-    "body",
+    ("body", "error_type", "loc"),
     [
-        {"payment_id": "not-a-uuid", "status": "succeeded"},
-        {"status": "succeeded"},
-        {"payment_id": str(uuid4())},
-        {"payment_id": str(uuid4()), "status": "paid"},
+        (
+            {"payment_id": "not-a-uuid", "status": "succeeded"},
+            "uuid_parsing",
+            ["body", "payment_id"],
+        ),
+        ({"status": "succeeded"}, "missing", ["body", "payment_id"]),
+        ({"payment_id": str(uuid4())}, "missing", ["body", "status"]),
+        ({"payment_id": str(uuid4()), "status": "paid"}, "enum", ["body", "status"]),
     ],
 )
-async def test_webhook_validation_errors(client: AsyncClient, body: dict[str, Any]) -> None:
+async def test_webhook_validation_errors(
+    client: AsyncClient, body: dict[str, Any], error_type: str, loc: list[str]
+) -> None:
     response = await post_webhook(client, body)
 
-    assert response.status_code == 422
+    assert_validation_error(response, error_type, loc)
 
 
 async def test_webhook_tolerates_unknown_fields(

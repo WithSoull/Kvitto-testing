@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Payment
 from app.domain.enums import PaymentMethod, PaymentStatus
+from tests.helpers import assert_validation_error
 
 BASE_TIME = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
 
@@ -110,10 +111,18 @@ async def test_list_pagination(
 
 
 @pytest.mark.parametrize(
-    "params",
-    [{"limit": 0}, {"limit": 101}, {"offset": -1}, {"status": "paid"}, {"limit": "many"}],
+    ("params", "error_type", "loc"),
+    [
+        ({"limit": 0}, "greater_than_equal", ["query", "limit"]),
+        ({"limit": 101}, "less_than_equal", ["query", "limit"]),
+        ({"offset": -1}, "greater_than_equal", ["query", "offset"]),
+        ({"status": "paid"}, "enum", ["query", "status"]),
+        ({"limit": "many"}, "int_parsing", ["query", "limit"]),
+    ],
 )
-async def test_list_rejects_invalid_params(client: AsyncClient, params: dict[str, Any]) -> None:
+async def test_list_rejects_invalid_params(
+    client: AsyncClient, params: dict[str, Any], error_type: str, loc: list[str]
+) -> None:
     response = await client.get("/payments", params=params)
 
-    assert response.status_code == 422
+    assert_validation_error(response, error_type, loc)

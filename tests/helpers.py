@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import json
+from collections.abc import Sequence
 from typing import Any
 
 from httpx import AsyncClient, Response
@@ -31,3 +32,13 @@ async def post_webhook(
         # Bytes, so tests can also send non-ASCII garbage, which httpx rejects in a str header.
         headers[b"X-Signature"] = signature.encode()
     return await client.post("/webhooks/bank", content=body, headers=headers)
+
+
+def assert_validation_error(
+    response: Response, error_type: str, loc: Sequence[str | int], msg_contains: str = ""
+) -> None:
+    """The response is a 422 with exactly one error of the expected type and location."""
+    assert response.status_code == 422, response.text
+    errors = response.json()["detail"]
+    assert [(error["type"], error["loc"]) for error in errors] == [(error_type, list(loc))]
+    assert msg_contains in errors[0]["msg"]

@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Payment
-from tests.helpers import LOOKALIKE_CODE
+from tests.helpers import LOOKALIKE_CODE, assert_validation_error
 
 PAYMENT_FIELDS = {
     "id",
@@ -156,25 +156,45 @@ async def test_installment_spec_example(client: AsyncClient) -> None:
     assert response.json()["schedule"] == [663334, 663333, 663333]
 
 
+REQUIRED_MONTHS = "installment_months is required"
+FORBIDDEN_MONTHS = "installment_months is allowed only for installment"
+
+
 @pytest.mark.parametrize(
-    "overrides",
+    ("overrides", "error_type", "loc", "msg_contains"),
     [
-        {"method": "installment"},
-        {"method": "installment", "installment_months": None},
-        {"method": "installment", "installment_months": 4},
-        {"method": "card", "installment_months": 3},
-        {"method": "sbp", "installment_months": 6},
-        {"method": "cash"},
-        {"email": "not-an-email"},
-        {"tariff_id": ""},
+        # Cross-field rules come from the model validator, so their loc is the whole body.
+        ({"method": "installment"}, "value_error", ["body"], REQUIRED_MONTHS),
+        (
+            {"method": "installment", "installment_months": None},
+            "value_error",
+            ["body"],
+            REQUIRED_MONTHS,
+        ),
+        ({"method": "card", "installment_months": 3}, "value_error", ["body"], FORBIDDEN_MONTHS),
+        ({"method": "sbp", "installment_months": 6}, "value_error", ["body"], FORBIDDEN_MONTHS),
+        (
+            {"method": "installment", "installment_months": 4},
+            "literal_error",
+            ["body", "installment_months"],
+            "",
+        ),
+        ({"method": "cash"}, "enum", ["body", "method"], ""),
+        ({"email": "not-an-email"}, "value_error", ["body", "email"], ""),
+        ({"tariff_id": ""}, "string_too_short", ["body", "tariff_id"], ""),
     ],
 )
 async def test_create_payment_validation_errors(
-    client: AsyncClient, db_session: AsyncSession, overrides: dict[str, Any]
+    client: AsyncClient,
+    db_session: AsyncSession,
+    overrides: dict[str, Any],
+    error_type: str,
+    loc: list[str],
+    msg_contains: str,
 ) -> None:
     response = await client.post("/payments", json=payment_body(**overrides))
 
-    assert response.status_code == 422
+    assert_validation_error(response, error_type, loc, msg_contains)
     assert await count_payments(db_session) == 0
 
 
@@ -260,7 +280,7 @@ async def test_requests_without_idempotency_key_create_separate_payments(
 async def test_empty_idempotency_key_is_rejected(client: AsyncClient) -> None:
     response = await client.post("/payments", json=payment_body(), headers={"Idempotency-Key": ""})
 
-    assert response.status_code == 422
+    assert_validation_error(response, "string_too_short", ["header", "Idempotency-Key"])
 
 
 # --- Reading a payment (spec scenario 5) ---
@@ -287,4 +307,4 @@ async def test_get_missing_payment_returns_404(client: AsyncClient) -> None:
 async def test_get_payment_with_invalid_id(client: AsyncClient) -> None:
     response = await client.get("/payments/not-a-uuid")
 
-    assert response.status_code == 422
+    assert_validation_error(response, "uuid_parsing", ["path", "payment_id"])
