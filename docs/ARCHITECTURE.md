@@ -37,12 +37,14 @@ kvitto/
 │   ├── main.py              # create_app(): роутеры, exception handlers, lifespan
 │   ├── config.py            # Settings (pydantic-settings): DATABASE_URL, WEBHOOK_SECRET
 │   ├── api/
-│   │   ├── deps.py          # get_session, verify_signature
+│   │   ├── deps.py          # SessionDep, verify_signature (X-Signature)
 │   │   ├── errors.py        # exception handlers: domain error → HTTP
+│   │   ├── health.py
 │   │   ├── tariffs.py
 │   │   ├── payments.py
 │   │   └── webhooks.py
 │   ├── schemas/             # Pydantic v2: запросы и ответы API
+│   │   ├── errors.py        # ErrorDetail для OpenAPI
 │   │   ├── tariff.py
 │   │   ├── payment.py
 │   │   └── webhook.py
@@ -53,24 +55,27 @@ kvitto/
 │   ├── domain/
 │   │   ├── enums.py         # PaymentStatus, PaymentMethod (StrEnum)
 │   │   ├── money.py         # calc_discount, build_schedule
-│   │   ├── promo.py         # PROMO_CODES, resolve_promo
+│   │   ├── promo.py         # PROMO_CODES, normalize_promo_code, promo_discount_percent
 │   │   ├── status.py        # ALLOWED_TRANSITIONS, ensure_transition_allowed
 │   │   └── errors.py        # DomainError и наследники
 │   └── db/
 │       ├── base.py          # DeclarativeBase, naming convention
-│       ├── session.py       # engine, async_sessionmaker(expire_on_commit=False)
+│       ├── session.py       # engine, session_factory, get_session
 │       └── models.py        # Tariff, Payment
 ├── migrations/              # Alembic (async env.py)
 │   └── versions/
 │       ├── 0001_initial_schema.py
 │       └── 0002_seed_tariffs.py
 ├── tests/
-│   ├── conftest.py          # БД, сессия с откатом, AsyncClient, фабрики
-│   ├── unit/                # domain: money, promo, status
-│   └── api/                 # эндпоинты через httpx против Postgres
+│   ├── conftest.py          # миграции, сессия с откатом, AsyncClient
+│   ├── helpers.py           # подпись и отправка вебхука
+│   ├── unit/                # domain (money, promo, status) и config
+│   ├── db/                  # схема: сид, CHECK/FK/UNIQUE, откат миграций
+│   ├── api/                 # эндпоинты через httpx против Postgres
+│   └── services/            # гонки на реальных параллельных транзакциях
 ├── docker/postgres/init.sql # создаёт БД kvitto_test
 ├── docs/                    # SPEC, ARCHITECTURE, DECISIONS
-├── .github/workflows/ci.yml # (бонус 3)
+├── .github/workflows/ci.yml # lint, тесты, smoke через docker compose
 ├── Dockerfile
 ├── docker-compose.yml
 ├── alembic.ini

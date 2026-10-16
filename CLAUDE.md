@@ -12,7 +12,7 @@
 (или агента, который поставил тебе задачу), а не додумывай и не «улучшай» молча.
 
 ## Стек
-Python 3.12 · FastAPI · Pydantic v2 · SQLAlchemy 2.0 **async** + asyncpg · PostgreSQL 16 · Alembic ·
+Python 3.12 · FastAPI · Pydantic v2 · SQLAlchemy 2.x **async** + asyncpg · PostgreSQL 16 · Alembic ·
 uv · pytest + pytest-asyncio + httpx · ruff · mypy --strict · Docker Compose.
 
 ## Команды
