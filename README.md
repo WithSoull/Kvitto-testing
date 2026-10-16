@@ -38,6 +38,16 @@ uv run pytest
 uv run ruff check . && uv run ruff format --check . && uv run mypy .
 ```
 
+## CI
+
+GitHub Actions ([.github/workflows/ci.yml](.github/workflows/ci.yml)) запускается на каждый push
+и pull request. В нём три джобы:
+- **Lint and types** — `ruff check`, `ruff format --check`, `mypy --strict`;
+- **Tests** — `pytest` против Postgres из service-контейнера;
+- **Docker Compose smoke test** — `docker compose up --build --wait`, затем запросы к `/health`
+  и `/tariffs`. Так проверяется, что проект поднимается по инструкции из README и миграции
+  создают тарифы.
+
 ## Локальная разработка без контейнера приложения
 
 ```bash
