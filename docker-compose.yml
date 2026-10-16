@@ -20,6 +20,8 @@ services:
     build: .
     environment:
       DATABASE_URL: postgresql+asyncpg://kvitto:kvitto@db:5432/kvitto
+      # Dev default so `docker compose up` works out of the box; override in real deployments.
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-dev-webhook-secret}
     ports:
       - "8000:8000"
     depends_on:

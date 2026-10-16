@@ -118,7 +118,8 @@ OpenAPI 3.1 генерируется FastAPI (`/openapi.json`, `/docs`). Все 
 Тело: `{ "payment_id": "<uuid>", "status": "succeeded" }`. `status` — одно из четырёх значений.
 
 Порядок проверок:
-1. *(бонус 1)* Подпись: заголовок `X-Signature` = hex(HMAC-SHA256(raw_body, WEBHOOK_SECRET)). Нет/неверная → **401** `{"detail": "Invalid signature"}`.
+1. *(бонус 1, реализован)* Подпись: заголовок `X-Signature` = hex(HMAC-SHA256(raw_body, WEBHOOK_SECRET)). Нет/неверная → **401** `{"detail": "Invalid signature"}`.
+   Исключение: тело, которое вообще не является JSON, FastAPI отклоняет с 422 ещё до проверки подписи (см. DECISIONS).
 2. Валидация тела → **422**.
 3. Платежа нет → **404** `{"detail": "Payment not found"}`.
 4. Переход запрещён → **409** `{"error": "invalid_transition"}`; статус не меняется.

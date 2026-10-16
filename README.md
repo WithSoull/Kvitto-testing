@@ -93,11 +93,17 @@ curl -s localhost:8000/payments/<payment_id>
 Нет такого платежа — `404 {"detail": "Payment not found"}`.
 
 ### Уведомление банка
+Запрос подписывается: `X-Signature` — hex HMAC-SHA256 от **сырого тела** с секретом
+`WEBHOOK_SECRET`. В `docker compose` по умолчанию это `dev-webhook-secret`.
 ```bash
+BODY='{"payment_id": "<payment_id>", "status": "succeeded"}'
+SIG=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac 'dev-webhook-secret' | awk '{print $NF}')
 curl -s -X POST localhost:8000/webhooks/bank \
   -H 'Content-Type: application/json' \
-  -d '{"payment_id": "<payment_id>", "status": "succeeded"}'
+  -H "X-Signature: $SIG" \
+  -d "$BODY"
 ```
+- Нет подписи или она неверная — `401 {"detail": "Invalid signature"}`.
 - Успех — `200 {"result": "ok"}`.
 - Запрещённый переход (например, `succeeded → failed`) — `409 {"error": "invalid_transition"}`, статус не меняется.
 - Нет такого платежа — `404`.

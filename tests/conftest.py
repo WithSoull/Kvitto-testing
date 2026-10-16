@@ -8,12 +8,15 @@ from alembic.config import Config
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 
+from tests.helpers import TEST_WEBHOOK_SECRET
+
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL",
     "postgresql+asyncpg://kvitto:kvitto@localhost:5432/kvitto_test",
 )
 # App settings are read at import time; point them at the test database before importing the app.
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
+os.environ["WEBHOOK_SECRET"] = TEST_WEBHOOK_SECRET
 
 from app.db.session import get_session  # noqa: E402
 from app.main import app  # noqa: E402

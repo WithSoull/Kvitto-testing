@@ -1,3 +1,4 @@
+import json
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -7,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Payment
 from app.domain.enums import PaymentStatus
+from tests.helpers import post_webhook, sign
 
 
 @pytest.fixture
@@ -20,7 +22,7 @@ async def payment_id(client: AsyncClient) -> str:
 
 
 async def send_webhook(client: AsyncClient, payment_id: str, status: str) -> Response:
-    return await client.post("/webhooks/bank", json={"payment_id": payment_id, "status": status})
+    return await post_webhook(client, {"payment_id": payment_id, "status": status})
 
 
 async def move_to(client: AsyncClient, payment_id: str, *statuses: str) -> None:
@@ -112,6 +114,60 @@ async def test_webhook_for_missing_payment_returns_404(client: AsyncClient) -> N
     ],
 )
 async def test_webhook_validation_errors(client: AsyncClient, body: dict[str, Any]) -> None:
-    response = await client.post("/webhooks/bank", json=body)
+    response = await post_webhook(client, body)
 
     assert response.status_code == 422
+
+
+# --- Signature (bonus): X-Signature = hex HMAC-SHA256 of the raw body with WEBHOOK_SECRET ---
+
+
+@pytest.mark.parametrize(
+    "signature",
+    [
+        None,
+        "",
+        "0" * 64,
+        sign(b"some other body"),
+        sign(b"{}", secret="wrong-secret"),
+        "не-hex-подпись",
+    ],
+)
+async def test_invalid_signature_returns_401_and_keeps_status(
+    client: AsyncClient, db_session: AsyncSession, payment_id: str, signature: str | None
+) -> None:
+    response = await post_webhook(
+        client, {"payment_id": payment_id, "status": "succeeded"}, signature=signature
+    )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Invalid signature"}
+    assert await stored_status(db_session, payment_id) == PaymentStatus.PENDING
+
+
+async def test_signature_is_checked_over_raw_bytes(
+    client: AsyncClient, db_session: AsyncSession, payment_id: str
+) -> None:
+    # Unusual formatting: a server that re-serializes JSON before hashing would reject this.
+    body = f'{{ "status" : "succeeded",\n  "payment_id":"{payment_id}" }}'.encode()
+
+    response = await post_webhook(client, body)
+
+    assert response.status_code == 200
+    assert await stored_status(db_session, payment_id) == PaymentStatus.SUCCEEDED
+
+
+async def test_tampered_body_is_rejected(client: AsyncClient, payment_id: str) -> None:
+    signed = json.dumps({"payment_id": payment_id, "status": "failed"}).encode()
+    tampered = signed.replace(b"failed", b"succeeded")
+
+    response = await post_webhook(client, tampered, signature=sign(signed))
+
+    assert response.status_code == 401
+
+
+async def test_signature_is_checked_before_body_validation(client: AsyncClient) -> None:
+    # An unauthenticated caller must not learn anything from validation errors.
+    response = await post_webhook(client, {"status": "paid"}, signature="0" * 64)
+
+    assert response.status_code == 401
