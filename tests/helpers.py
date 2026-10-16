@@ -7,6 +7,9 @@ from httpx import AsyncClient, Response
 
 TEST_WEBHOOK_SECRET = "test-webhook-secret"
 
+# "kvitto10" with U+0131 (dotless i) instead of the Latin "i".
+LOOKALIKE_CODE = "kv\u0131tto10"
+
 
 def sign(body: bytes, secret: str = TEST_WEBHOOK_SECRET) -> str:
     """Independent reference implementation of the bank's X-Signature."""

@@ -11,7 +11,11 @@ def normalize_promo_code(raw: str | None) -> str | None:
     """Case-insensitive codes: trim and upper-case; blank means no code."""
     if raw is None:
         return None
-    code = raw.strip().upper()
+    code = raw.strip()
+    # Only ASCII is upper-cased: Unicode upper() maps look-alikes such as the dotless i
+    # (U+0131) to "I", turning a look-alike into a valid code. Non-ASCII never matches.
+    if code.isascii():
+        code = code.upper()
     return code or None
 
 

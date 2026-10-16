@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Payment
+from tests.helpers import LOOKALIKE_CODE
 
 PAYMENT_FIELDS = {
     "id",
@@ -88,10 +89,11 @@ async def test_create_payment_normalizes_email(client: AsyncClient) -> None:
     assert response.json()["email"] == "user@example.com"
 
 
+@pytest.mark.parametrize("promo_code", ["KVITTO99", LOOKALIKE_CODE])
 async def test_create_payment_unknown_promo_code(
-    client: AsyncClient, db_session: AsyncSession
+    client: AsyncClient, db_session: AsyncSession, promo_code: str
 ) -> None:
-    response = await client.post("/payments", json=payment_body(promo_code="KVITTO99"))
+    response = await client.post("/payments", json=payment_body(promo_code=promo_code))
 
     assert response.status_code == 422
     error = response.json()["detail"][0]

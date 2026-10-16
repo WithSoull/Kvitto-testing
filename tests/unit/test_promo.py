@@ -2,6 +2,7 @@ import pytest
 
 from app.domain.errors import UnknownPromoCodeError
 from app.domain.promo import normalize_promo_code, promo_discount_percent
+from tests.helpers import LOOKALIKE_CODE
 
 
 @pytest.mark.parametrize(
@@ -11,6 +12,9 @@ from app.domain.promo import normalize_promo_code, promo_discount_percent
         ("kvitto10", "KVITTO10"),
         (" KviTTo10 ", "KVITTO10"),
         ("unknown", "UNKNOWN"),
+        # Non-ASCII is left as is: Unicode upper() maps the dotless i to "I",
+        # which would turn a look-alike code into a valid one.
+        (LOOKALIKE_CODE, LOOKALIKE_CODE),
         ("", None),
         ("   ", None),
         (None, None),
@@ -25,8 +29,11 @@ def test_promo_discount_percent(code: str | None, expected: int) -> None:
     assert promo_discount_percent(code) == expected
 
 
-def test_promo_discount_percent_unknown_code() -> None:
-    with pytest.raises(UnknownPromoCodeError) as exc_info:
-        promo_discount_percent("KVITTO99")
+@pytest.mark.parametrize("raw", ["KVITTO99", LOOKALIKE_CODE])
+def test_promo_discount_percent_unknown_code(raw: str) -> None:
+    code = normalize_promo_code(raw)
 
-    assert exc_info.value.code == "KVITTO99"
+    with pytest.raises(UnknownPromoCodeError) as exc_info:
+        promo_discount_percent(code)
+
+    assert exc_info.value.code == raw
