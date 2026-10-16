@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Payment, Tariff
 from app.domain.enums import PaymentMethod, PaymentStatus
+from tests.helpers import purge_payments
 
 
 def valid_payment(**overrides: Any) -> Payment:
@@ -88,5 +89,10 @@ async def test_idempotency_key_is_unique(db_session: AsyncSession) -> None:
 
 
 def test_migrations_downgrade_and_upgrade_from_scratch(alembic_config: Config) -> None:
+    # Downgrading the tariff seed is blocked by existing payments (FK), by design.
+    url = alembic_config.get_main_option("sqlalchemy.url")
+    assert url is not None
+    purge_payments(url)
+
     command.downgrade(alembic_config, "base")
     command.upgrade(alembic_config, "head")

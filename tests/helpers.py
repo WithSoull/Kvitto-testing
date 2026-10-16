@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import hmac
 import json
@@ -5,6 +6,8 @@ from collections.abc import Sequence
 from typing import Any
 
 from httpx import AsyncClient, Response
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
 
 TEST_WEBHOOK_SECRET = "test-webhook-secret"
 
@@ -42,3 +45,18 @@ def assert_validation_error(
     errors = response.json()["detail"]
     assert [(error["type"], error["loc"]) for error in errors] == [(error_type, list(loc))]
     assert msg_contains in errors[0]["msg"]
+
+
+def purge_payments(database_url: str) -> None:
+    """Delete committed payments, e.g. left over by an interrupted concurrency test run.
+
+    Sync on purpose (like the Alembic fixtures): it is called outside the test event loop.
+    """
+
+    async def purge() -> None:
+        engine = create_async_engine(database_url)
+        async with engine.begin() as connection:
+            await connection.execute(text("DELETE FROM payments"))
+        await engine.dispose()
+
+    asyncio.run(purge())

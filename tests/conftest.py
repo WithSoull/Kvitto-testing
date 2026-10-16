@@ -8,7 +8,7 @@ from alembic.config import Config
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 
-from tests.helpers import TEST_WEBHOOK_SECRET
+from tests.helpers import TEST_WEBHOOK_SECRET, purge_payments
 
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL",
@@ -35,6 +35,8 @@ def alembic_config() -> Config:
 def _migrated_database(alembic_config: Config) -> None:
     # Sync on purpose: Alembic's env.py runs its own event loop via asyncio.run().
     command.upgrade(alembic_config, "head")
+    # Tests rely on an empty payments table; a previously interrupted run may have left rows.
+    purge_payments(TEST_DATABASE_URL)
 
 
 @pytest.fixture(scope="session")
