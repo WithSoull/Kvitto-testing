@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api import health, payments, tariffs
+from app.api import health, payments, tariffs, webhooks
 from app.api.errors import register_error_handlers
 from app.db.session import engine
 
@@ -25,6 +25,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(tariffs.router)
     app.include_router(payments.router)
+    app.include_router(webhooks.router)
     register_error_handlers(app)
     return app
 
