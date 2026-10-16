@@ -1,5 +1,6 @@
 import hashlib
 import json
+from collections.abc import Sequence
 from uuid import UUID
 
 from sqlalchemy import select
@@ -7,7 +8,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Payment, Tariff
-from app.domain.enums import PaymentMethod
+from app.domain.enums import PaymentMethod, PaymentStatus
 from app.domain.errors import IdempotencyKeyReusedError, PaymentNotFoundError, UnknownTariffError
 from app.domain.money import build_schedule, calc_discount
 from app.domain.promo import promo_discount_percent
@@ -83,6 +84,26 @@ async def get_payment(session: AsyncSession, payment_id: UUID) -> Payment:
     if payment is None:
         raise PaymentNotFoundError(payment_id)
     return payment
+
+
+async def list_payments(
+    session: AsyncSession,
+    *,
+    email: str | None,
+    status: PaymentStatus | None,
+    limit: int,
+    offset: int,
+) -> Sequence[Payment]:
+    query = select(Payment)
+    if email is not None:
+        # Emails are stored lower-cased, so an equality match on the index is case-insensitive.
+        query = query.where(Payment.email == email.strip().lower())
+    if status is not None:
+        query = query.where(Payment.status == status)
+    # id breaks ties between equal timestamps, so pages never overlap or skip rows.
+    query = query.order_by(Payment.created_at.desc(), Payment.id.desc()).limit(limit).offset(offset)
+    result = await session.scalars(query)
+    return result.all()
 
 
 async def _find_by_idempotency_key(session: AsyncSession, key: str) -> Payment | None:

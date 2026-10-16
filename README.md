@@ -92,6 +92,13 @@ curl -s localhost:8000/payments/<payment_id>
 ```
 Нет такого платежа — `404 {"detail": "Payment not found"}`.
 
+### Список платежей с фильтрами
+```bash
+curl -s 'localhost:8000/payments?email=user@example.com&status=pending&limit=10&offset=0'
+```
+Новые сверху. Все параметры необязательны: `email` (без учёта регистра), `status`,
+`limit` от 1 до 100 (по умолчанию 50), `offset`.
+
 ### Уведомление банка
 Запрос подписывается: `X-Signature` — hex HMAC-SHA256 от **сырого тела** с секретом
 `WEBHOOK_SECRET`. В `docker compose` по умолчанию это `dev-webhook-secret`.

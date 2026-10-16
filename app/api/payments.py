@@ -1,9 +1,10 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Header, Response, status
+from fastapi import APIRouter, Header, Query, Response, status
 
 from app.api.deps import SessionDep
+from app.domain.enums import PaymentStatus
 from app.schemas.errors import ErrorDetail
 from app.schemas.payment import PaymentCreate, PaymentOut
 from app.services import payments as payments_service
@@ -46,6 +47,27 @@ async def create_payment(
     if not created:
         response.status_code = status.HTTP_200_OK
     return PaymentOut.model_validate(payment)
+
+
+@router.get(
+    "",
+    response_model=list[PaymentOut],
+    status_code=status.HTTP_200_OK,
+    summary="List payments",
+    description="Newest first. Filters are combined with AND; email matching is case-insensitive.",
+)
+async def list_payments(
+    session: SessionDep,
+    email: Annotated[str | None, Query(max_length=320, examples=["user@example.com"])] = None,
+    # Exposed as ?status=...; the Python name avoids shadowing fastapi.status.
+    payment_status: Annotated[PaymentStatus | None, Query(alias="status")] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> list[PaymentOut]:
+    payments = await payments_service.list_payments(
+        session, email=email, status=payment_status, limit=limit, offset=offset
+    )
+    return [PaymentOut.model_validate(payment) for payment in payments]
 
 
 @router.get(
