@@ -37,12 +37,14 @@ kvitto/
 │   ├── main.py              # create_app(): роутеры, exception handlers, lifespan
 │   ├── config.py            # Settings (pydantic-settings): DATABASE_URL, WEBHOOK_SECRET
 │   ├── api/
-│   │   ├── deps.py          # get_session, verify_signature
+│   │   ├── deps.py          # SessionDep, verify_signature (X-Signature)
 │   │   ├── errors.py        # exception handlers: domain error → HTTP
+│   │   ├── health.py
 │   │   ├── tariffs.py
 │   │   ├── payments.py
 │   │   └── webhooks.py
 │   ├── schemas/             # Pydantic v2: запросы и ответы API
+│   │   ├── errors.py        # ErrorDetail для OpenAPI
 │   │   ├── tariff.py
 │   │   ├── payment.py
 │   │   └── webhook.py
@@ -53,24 +55,27 @@ kvitto/
 │   ├── domain/
 │   │   ├── enums.py         # PaymentStatus, PaymentMethod (StrEnum)
 │   │   ├── money.py         # calc_discount, build_schedule
-│   │   ├── promo.py         # PROMO_CODES, resolve_promo
+│   │   ├── promo.py         # PROMO_CODES, normalize_promo_code, promo_discount_percent
 │   │   ├── status.py        # ALLOWED_TRANSITIONS, ensure_transition_allowed
 │   │   └── errors.py        # DomainError и наследники
 │   └── db/
 │       ├── base.py          # DeclarativeBase, naming convention
-│       ├── session.py       # engine, async_sessionmaker(expire_on_commit=False)
+│       ├── session.py       # engine, session_factory, get_session
 │       └── models.py        # Tariff, Payment
 ├── migrations/              # Alembic (async env.py)
 │   └── versions/
 │       ├── 0001_initial_schema.py
 │       └── 0002_seed_tariffs.py
 ├── tests/
-│   ├── conftest.py          # БД, сессия с откатом, AsyncClient, фабрики
-│   ├── unit/                # domain: money, promo, status
-│   └── api/                 # эндпоинты через httpx против Postgres
+│   ├── conftest.py          # миграции, сессия с откатом, AsyncClient
+│   ├── helpers.py           # подпись вебхука, проверка 422, очистка тестовой БД
+│   ├── unit/                # domain (money, promo, status) и config
+│   ├── db/                  # схема: сид, CHECK/FK/UNIQUE, откат миграций
+│   ├── api/                 # эндпоинты через httpx против Postgres
+│   └── services/            # гонки на реальных параллельных транзакциях
 ├── docker/postgres/init.sql # создаёт БД kvitto_test
 ├── docs/                    # SPEC, ARCHITECTURE, DECISIONS
-├── .github/workflows/ci.yml # (бонус 3)
+├── .github/workflows/ci.yml # lint, тесты, smoke через docker compose
 ├── Dockerfile
 ├── docker-compose.yml
 ├── alembic.ini
@@ -106,7 +111,7 @@ kvitto/
 | `promo_code` | `VARCHAR(32)` | NULL, нормализованный (верхний регистр) |
 | `schedule` | `BIGINT[]` | NULL |
 | `idempotency_key` | `VARCHAR(255)` | NULL, `UNIQUE` |
-| `request_hash` | `CHAR(64)` | NULL, sha256 канонического запроса |
+| `request_hash` | `VARCHAR(64)` | NULL, sha256 канонического запроса |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL, default `now()` |
 
@@ -146,7 +151,7 @@ POST /webhooks/bank
  1. verify_signature (dependency, по сырым байтам тела) → 401        [бонус 1]
  2. Pydantic валидирует body → 422
  3. SELECT ... FROM payments WHERE id = :id FOR UPDATE → нет → 404
- 4. ensure_transition_allowed(current, new) → InvalidTransition → 409
+ 4. ensure_transition_allowed(current, new) → InvalidTransitionError → 409
  5. UPDATE status, updated_at; COMMIT → 200 {"result": "ok"}
 ```
 `FOR UPDATE` сериализует параллельные вебхуки по одному платежу: второй ждёт коммита первого и
@@ -157,11 +162,11 @@ POST /webhooks/bank
 
 | Исключение | HTTP | Тело |
 |---|---|---|
-| `PaymentNotFound` | 404 | `{"detail": "Payment not found"}` |
-| `InvalidTransition` | 409 | `{"error": "invalid_transition"}` |
-| `UnknownTariff` | 422 | формат FastAPI, `loc: ["body","tariff_id"]` |
-| `UnknownPromoCode` | 422 | формат FastAPI, `loc: ["body","promo_code"]` |
-| `IdempotencyKeyReused` | 422 | формат FastAPI, `loc: ["header","Idempotency-Key"]` |
+| `PaymentNotFoundError` | 404 | `{"detail": "Payment not found"}` |
+| `InvalidTransitionError` | 409 | `{"error": "invalid_transition"}` |
+| `UnknownTariffError` | 422 | формат FastAPI, `loc: ["body","tariff_id"]` |
+| `UnknownPromoCodeError` | 422 | формат FastAPI, `loc: ["body","promo_code"]` |
+| `IdempotencyKeyReusedError` | 422 | формат FastAPI, `loc: ["header","Idempotency-Key"]` |
 | неверная подпись | 401 | `{"detail": "Invalid signature"}` (`HTTPException` в dependency) |
 
 ## 7. Транзакции и сессии (async)
@@ -178,8 +183,9 @@ POST /webhooks/bank
 - Клиент: `httpx.AsyncClient(transport=ASGITransport(app=app), base_url="http://test")`.
 - `pytest-asyncio`: `asyncio_mode = "auto"`, единый event loop на сессию для фикстур и тестов
   (иначе asyncpg-соединение «живёт» в другом loop'е → ошибки).
-- Тест на гонку идемпотентности (параллельные запросы) не помещается в схему с откатом — если
-  делаем, то отдельным тестом на реальных коммитах с очисткой таблицы.
+- Тесты на гонку идемпотентности не помещаются в схему с откатом: им нужны отдельные соединения.
+  Они лежат в `tests/services/test_payments_concurrency.py`, коммитят по-настоящему и удаляют
+  свои строки по ключу.
 
 ## 9. Окружение и запуск
 - `docker compose up` — `db` (postgres:16-alpine, healthcheck) + `app` (`alembic upgrade head && uvicorn`), порт 8000.

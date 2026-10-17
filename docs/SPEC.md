@@ -103,6 +103,7 @@ OpenAPI 3.1 генерируется FastAPI (`/openapi.json`, `/docs`). Все 
 - **200** — передан `Idempotency-Key`, платёж с этим ключом уже есть **и тело запроса совпадает** → тот же платёж, второй не создаётся.
 - **422** — тот же `Idempotency-Key`, но **другое тело запроса** (`type: "idempotency_key_reused"`).
 - **422** — ошибки валидации, неизвестный промокод (`unknown_promo_code`), неизвестный тариф (`unknown_tariff`).
+- **422** — неизвестное поле в теле (`extra_forbidden`): опечатка вроде `promocode` не должна молча давать полную цену.
 
 «Совпадение тела» — сравнение SHA-256 от канонического JSON нормализованного запроса
 (после валидации Pydantic: промокод в верхнем регистре, email в нижнем, ключи отсортированы).
@@ -118,15 +119,17 @@ OpenAPI 3.1 генерируется FastAPI (`/openapi.json`, `/docs`). Все 
 Тело: `{ "payment_id": "<uuid>", "status": "succeeded" }`. `status` — одно из четырёх значений.
 
 Порядок проверок:
-1. *(бонус 1)* Подпись: заголовок `X-Signature` = hex(HMAC-SHA256(raw_body, WEBHOOK_SECRET)). Нет/неверная → **401** `{"detail": "Invalid signature"}`.
-2. Валидация тела → **422**.
+1. *(бонус 1, реализован)* Подпись: заголовок `X-Signature` = hex(HMAC-SHA256(raw_body, WEBHOOK_SECRET)). Нет/неверная → **401** `{"detail": "Invalid signature"}`.
+   Исключение: тело, которое вообще не является JSON, FastAPI отклоняет с 422 ещё до проверки подписи (см. DECISIONS).
+2. Валидация тела → **422**. Неизвестные поля **игнорируются**: банк может расширять формат уведомлений (см. DECISIONS).
 3. Платежа нет → **404** `{"detail": "Payment not found"}`.
 4. Переход запрещён → **409** `{"error": "invalid_transition"}`; статус не меняется.
 5. Успех → **200** `{"result": "ok"}`.
 
-### 5.5 `GET /payments` *(бонус 2)*
+### 5.5 `GET /payments` *(бонус 2, реализован)*
 Query: `email` (точное совпадение без учёта регистра), `status`, `limit` (1–100, по умолчанию 50), `offset` (>= 0).
 - **200** — список Payment, сортировка `created_at DESC, id DESC`.
+- **422** — `limit`/`offset` вне диапазона, неизвестный `status`.
 
 ### 5.6 Формат ошибок
 - Ошибки валидации — стандартный ответ FastAPI 422.
@@ -136,7 +139,7 @@ Query: `email` (точное совпадение без учёта регист
 - 409 — строго `{"error": "invalid_transition"}` (как в ТЗ, без обёртки `detail`).
 
 ## 6. Нефункциональные требования
-- Python 3.12, FastAPI, Pydantic v2, SQLAlchemy 2.0 async + asyncpg, PostgreSQL 16, Alembic.
+- Python 3.12, FastAPI, Pydantic v2, SQLAlchemy 2.x async + asyncpg, PostgreSQL 16, Alembic.
 - Запуск одной командой: `docker compose up` (миграции применяются при старте контейнера).
 - Конфигурация через переменные окружения (`DATABASE_URL`, `WEBHOOK_SECRET`), пример — `.env.example`.
 - Конкурентная корректность: параллельные запросы с одним `Idempotency-Key` не создают дублей
