@@ -68,7 +68,7 @@ kvitto/
 │       └── 0002_seed_tariffs.py
 ├── tests/
 │   ├── conftest.py          # миграции, сессия с откатом, AsyncClient
-│   ├── helpers.py           # подпись и отправка вебхука
+│   ├── helpers.py           # подпись вебхука, проверка 422, очистка тестовой БД
 │   ├── unit/                # domain (money, promo, status) и config
 │   ├── db/                  # схема: сид, CHECK/FK/UNIQUE, откат миграций
 │   ├── api/                 # эндпоинты через httpx против Postgres
