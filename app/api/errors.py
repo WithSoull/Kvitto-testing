@@ -6,6 +6,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
 from app.domain.errors import (
+    DomainError,
     IdempotencyKeyReusedError,
     InvalidTransitionError,
     PaymentNotFoundError,
@@ -22,45 +23,37 @@ def validation_error(loc: list[str], msg: str, error_type: str, value: Any) -> J
     )
 
 
-async def payment_not_found(_: Request, exc: PaymentNotFoundError) -> JSONResponse:
-    return JSONResponse(
-        status_code=status.HTTP_404_NOT_FOUND, content={"detail": "Payment not found"}
-    )
-
-
-async def invalid_transition(_: Request, exc: InvalidTransitionError) -> JSONResponse:
-    # The spec requires this exact body, without FastAPI's usual "detail" wrapper.
-    return JSONResponse(
-        status_code=status.HTTP_409_CONFLICT, content={"error": "invalid_transition"}
-    )
-
-
-async def unknown_tariff(_: Request, exc: UnknownTariffError) -> JSONResponse:
-    return validation_error(
-        ["body", "tariff_id"], "Unknown tariff", "unknown_tariff", exc.tariff_id
-    )
-
-
-async def unknown_promo_code(_: Request, exc: UnknownPromoCodeError) -> JSONResponse:
-    return validation_error(
-        ["body", "promo_code"], "Unknown promo code", "unknown_promo_code", exc.code
-    )
-
-
-async def idempotency_key_reused(_: Request, exc: IdempotencyKeyReusedError) -> JSONResponse:
-    return validation_error(
-        ["header", "Idempotency-Key"],
-        "Idempotency key was already used with a different request",
-        "idempotency_key_reused",
-        exc.key,
-    )
+async def domain_error_handler(_: Request, exc: Exception) -> JSONResponse:
+    # One handler for the DomainError base class keeps the whole mapping in one place
+    # and matches the (Request, Exception) signature Starlette expects, so mypy accepts it.
+    match exc:
+        case PaymentNotFoundError():
+            return JSONResponse(
+                status_code=status.HTTP_404_NOT_FOUND, content={"detail": "Payment not found"}
+            )
+        case InvalidTransitionError():
+            # The spec requires this exact body, without FastAPI's usual "detail" wrapper.
+            return JSONResponse(
+                status_code=status.HTTP_409_CONFLICT, content={"error": "invalid_transition"}
+            )
+        case UnknownTariffError():
+            return validation_error(
+                ["body", "tariff_id"], "Unknown tariff", "unknown_tariff", exc.tariff_id
+            )
+        case UnknownPromoCodeError():
+            return validation_error(
+                ["body", "promo_code"], "Unknown promo code", "unknown_promo_code", exc.code
+            )
+        case IdempotencyKeyReusedError():
+            return validation_error(
+                ["header", "Idempotency-Key"],
+                "Idempotency key was already used with a different request",
+                "idempotency_key_reused",
+                exc.key,
+            )
+    # A new DomainError without a mapping is a bug: surface it as a 500, not a silent 200.
+    raise exc
 
 
 def register_error_handlers(app: FastAPI) -> None:
-    # Starlette types handlers as accepting a bare Exception, so handlers narrowed to a
-    # specific error class are rejected by mypy, although they are only ever called with it.
-    app.add_exception_handler(PaymentNotFoundError, payment_not_found)  # type: ignore[arg-type]
-    app.add_exception_handler(InvalidTransitionError, invalid_transition)  # type: ignore[arg-type]
-    app.add_exception_handler(UnknownTariffError, unknown_tariff)  # type: ignore[arg-type]
-    app.add_exception_handler(UnknownPromoCodeError, unknown_promo_code)  # type: ignore[arg-type]
-    app.add_exception_handler(IdempotencyKeyReusedError, idempotency_key_reused)  # type: ignore[arg-type]
+    app.add_exception_handler(DomainError, domain_error_handler)

@@ -32,6 +32,10 @@ uv sync
 uv run pytest
 ```
 
+> Ошибка `database "kvitto_test" does not exist`? Docker-том Postgres был создан раньше, чем
+> появился `init.sql`, а скрипты инициализации выполняются только на пустом томе. Пересоздайте
+> том: `docker compose down -v && docker compose up -d db`. Команда удаляет локальные данные.
+
 Линтеры и типы:
 
 ```bash

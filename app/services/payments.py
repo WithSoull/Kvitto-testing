@@ -8,7 +8,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Payment, Tariff
-from app.domain.enums import PaymentMethod, PaymentStatus
+from app.domain.enums import PaymentStatus
 from app.domain.errors import IdempotencyKeyReusedError, PaymentNotFoundError, UnknownTariffError
 from app.domain.money import build_schedule, calc_discount
 from app.domain.promo import promo_discount_percent
@@ -43,10 +43,9 @@ async def create_payment(
 
     discount = calc_discount(tariff.price, promo_discount_percent(data.promo_code))
     amount = tariff.price - discount
-    schedule = None
-    if data.method is PaymentMethod.INSTALLMENT:
-        assert data.installment_months is not None  # guaranteed by PaymentCreate
-        schedule = build_schedule(amount, data.installment_months)
+    # PaymentCreate guarantees installment_months is set exactly for the installment method.
+    months = data.installment_months
+    schedule = build_schedule(amount, months) if months is not None else None
 
     statement = (
         insert(Payment)
@@ -69,10 +68,15 @@ async def create_payment(
     payment = (await session.scalars(statement)).one_or_none()
 
     if payment is None:
-        # A concurrent request with the same key committed first: replay its payment.
-        assert idempotency_key is not None  # NULL keys never conflict
-        existing = await _find_by_idempotency_key(session, idempotency_key)
-        assert existing is not None
+        # Only a non-NULL key can conflict: a concurrent request with it committed first.
+        existing = (
+            await _find_by_idempotency_key(session, idempotency_key)
+            if idempotency_key is not None
+            else None
+        )
+        if existing is None or idempotency_key is None:
+            # Unreachable while the unique index exists; fail loudly instead of returning nothing.
+            raise RuntimeError("INSERT was skipped, but no payment with this key exists")
         return _replay(existing, idempotency_key, request_hash), False
 
     await session.commit()
